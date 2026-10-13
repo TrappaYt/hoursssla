@@ -16,7 +16,7 @@ const int absenceLimit = 36;
 const int initialAbsenceHours = 22;
 
 // Понедельник недели, принятой за чётную. Проверь чётность по календарю СГЮА.
-const DateTime weekAnchor = DateTime(2026, 10, 12);
+final DateTime weekAnchor = DateTime(2026, 10, 12);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -232,6 +232,8 @@ class _AttendanceHomeState extends State<AttendanceHome> {
         scheduled,
         details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
       );
     } catch (_) {
