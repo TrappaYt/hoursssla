@@ -42,7 +42,7 @@ class AttendanceApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Учет Пропусков СГЮА',
+      title: 'Моя посещаемость',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0F0F1A),
@@ -158,7 +158,7 @@ class _MainContainerState extends State<MainContainer> {
             pairStatus.addAll(updatedStatuses);
             selectedDate = newDate;
           });
-          _saveData(); // Сохраняем при каждом изменении
+          _saveData();
         },
       ),
       AnalyticsScreen(
@@ -255,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     await flutterLocalNotificationsPlugin.zonedSchedule(
       0,
-      'СГЮА | Пары на сегодня',
+      'Моя посещаемость',
       'Проверь расписание! У тебя осталось ${widget.maxHours - unexcusedHours} ч. пропусков.',
       scheduledDate,
       const NotificationDetails(android: androidDetails),
@@ -286,7 +286,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Трекер Пропусков | ИЮЮР24-08', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        title: const Text('Моя посещаемость', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         elevation: 0,
         backgroundColor: Colors.transparent,
         centerTitle: true,
@@ -679,9 +679,8 @@ class AnalyticsScreen extends StatelessWidget {
       children: [
         Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
         const SizedBox(height: 2),
-        Text(title, style: TextStyle(fontSize: 10, color: Colors.grey)),
+        Text(title, style: const TextStyle(fontSize: 10, color: Colors.grey)),
       ],
     );
   }
 }
-
