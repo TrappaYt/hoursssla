@@ -356,4 +356,295 @@ class _HomeScreenState extends State<HomeScreen> {
                       firstDate: DateTime(2026, 9, 1),
                       lastDate: DateTime(2026, 12, 31),
                     );
-                    if (
+                    if (picked != null) {
+                      setState(() {
+                        selectedDate = picked;
+                        widget.onStatusChanged(unexcusedHours, pairStatus, selectedDate);
+                      });
+                    }
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              "Расписание на ${selectedDate.day}.${selectedDate.month}.${selectedDate.year}",
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            const SizedBox(height: 12),
+            _buildPairsList(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPairsList() {
+    Map<int, List<Lesson>> scheduleForWeek = widget.masterSchedule[isEvenWeek]!;
+    List<Lesson>? dayLessons = scheduleForWeek[selectedDate.weekday];
+    String dateStr = "${selectedDate.year}-${selectedDate.month}-${selectedDate.day}";
+
+    if (dayLessons == null || dayLessons.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        width: double.infinity,
+        decoration: BoxDecoration(color: const Color(0xFF1E1E2E), borderRadius: BorderRadius.circular(16)),
+        child: const Column(
+          children: [
+            Icon(Icons.bedtime_outlined, color: Colors.grey, size: 36),
+            SizedBox(height: 8),
+            Text("Выходной день — пар нет!", style: TextStyle(color: Colors.grey, fontSize: 14)),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: dayLessons.map((lesson) {
+        String key = "${dateStr}_${lesson.subject}_${lesson.time}";
+        String status = pairStatus[key] ?? "none";
+
+        Color cardBorder = Colors.white10;
+        String statusLabel = "Не отмечено";
+        IconData statusIcon = Icons.radio_button_unchecked;
+        Color iconColor = Colors.grey;
+
+        if (status == "present") {
+          cardBorder = Colors.greenAccent.withOpacity(0.5);
+          statusLabel = "Присутствовал";
+          statusIcon = Icons.check_circle;
+          iconColor = Colors.greenAccent;
+        } else if (status == "excused") {
+          cardBorder = Colors.lightBlueAccent.withOpacity(0.5);
+          statusLabel = "Уважительная причина";
+          statusIcon = Icons.info;
+          iconColor = Colors.lightBlueAccent;
+        } else if (status == "unexcused") {
+          cardBorder = Colors.redAccent.withOpacity(0.5);
+          statusLabel = "Н/У пропуск (+2ч)";
+          statusIcon = Icons.warning;
+          iconColor = Colors.redAccent;
+        }
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E2E),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: cardBorder, width: 1.2),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14.0),
+            child: Row(
+              children: [
+                Icon(statusIcon, color: iconColor, size: 28),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(lesson.time, style: const TextStyle(color: Color(0xFFA29BFE), fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
+                            child: Text(lesson.type, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(lesson.subject, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.meeting_room, size: 13, color: Colors.amberAccent),
+                          const SizedBox(width: 4),
+                          Text(lesson.room, style: const TextStyle(fontSize: 12, color: Colors.amberAccent)),
+                          const SizedBox(width: 10),
+                          Text("•  $statusLabel", style: TextStyle(fontSize: 11, color: iconColor)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.calendar_add_on, color: Colors.white54, size: 20),
+                      onPressed: () => _addPairToCalendar(lesson),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Color(0xFF6C5CE7), size: 20),
+                      onPressed: () => _showMarkDialog(key, lesson),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  void _showMarkDialog(String key, Lesson lesson) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E2E),
+        title: Text(lesson.subject, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: Text("Отметь статус для аудитории ${lesson.room}:"),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _updatePairStatus(key, "present");
+              Navigator.pop(context);
+            },
+            child: const Text("Был (0 ч)", style: TextStyle(color: Colors.greenAccent)),
+          ),
+          TextButton(
+            onPressed: () {
+              _updatePairStatus(key, "excused");
+              Navigator.pop(context);
+            },
+            child: const Text("Уважительная (0 ч)", style: TextStyle(color: Colors.lightBlueAccent)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () {
+              _updatePairStatus(key, "unexcused");
+              Navigator.pop(context);
+            },
+            child: const Text("Н/У (+2 ч)"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _updatePairStatus(String key, String newStatus) {
+    setState(() {
+      String oldStatus = pairStatus[key] ?? "none";
+      if (oldStatus == "unexcused") {
+        unexcusedHours = (unexcusedHours - 2).clamp(0, widget.maxHours);
+      }
+      if (newStatus == "unexcused") {
+        if (unexcusedHours + 2 <= widget.maxHours) {
+          unexcusedHours += 2;
+        }
+      }
+      pairStatus[key] = newStatus;
+      widget.onStatusChanged(unexcusedHours, pairStatus, selectedDate);
+    });
+  }
+}
+
+// ЭКРАН 2: АНАЛИТИКА ПО ПРЕДМЕТАМ
+class AnalyticsScreen extends StatelessWidget {
+  final Map<String, String> pairStatus;
+  final Map<bool, Map<int, List<Lesson>>> masterSchedule;
+
+  const AnalyticsScreen({
+    Key? key,
+    required this.pairStatus,
+    required this.masterSchedule,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    // Собираем статистику по предметам
+    Map<String, Map<String, int>> stats = {};
+
+    pairStatus.forEach((key, status) {
+      // Ключ формата: "YYYY-M-D_Предмет_Время"
+      List<String> parts = key.split('_');
+      if (parts.length >= 2) {
+        String subject = parts[1];
+        stats.putIfAbsent(subject, () => {'unexcused': 0, 'excused': 0, 'present': 0});
+        if (status == 'unexcused') stats[subject]!['unexcused'] = stats[subject]!['unexcused']! + 2;
+        if (status == 'excused') stats[subject]!['excused'] = stats[subject]!['excused']! + 1;
+        if (status == 'present') stats[subject]!['present'] = stats[subject]!['present']! + 1;
+      }
+    });
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Аналитика по предметам', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+      ),
+      body: stats.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.bar_chart, size: 64, color: Colors.grey),
+                  SizedBox(height: 12),
+                  Text("Пока нет отметок посещаемости", style: TextStyle(color: Colors.grey, fontSize: 15)),
+                  SizedBox(height: 4),
+                  Text("Отмечай пары во вкладке «Расписание»", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                ],
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                const Text(
+                  "Статистика пропусков и посещений:",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white70),
+                ),
+                const SizedBox(height: 16),
+                ...stats.entries.map((entry) {
+                  String subject = entry.key;
+                  int unexcused = entry.value['unexcused']!;
+                  int excused = entry.value['excused']!;
+                  int present = entry.value['present']!;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E1E2E),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: unexcused > 0 ? Colors.redAccent.withOpacity(0.4) : Colors.white10,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          subject,
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _buildBadge("Н/У пропуски", "$unexcused ч.", Colors.redAccent),
+                            _buildBadge("Уважительные", "$excused пар", Colors.lightBlueAccent),
+                            _buildBadge("Посещено", "$present пар", Colors.greenAccent),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildBadge(String title, String value, Color color) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
+        const SizedBox(height: 2),
+        Text(title, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      ],
+    );
+  }
+
