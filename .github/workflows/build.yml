@@ -10,11 +10,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v3
-        with:
-          flutter-version: '3.19.x'
-      - run: flutter pub get
-      - run: flutter build apk --release
+
+      - name: Install Flutter manually
+        run: |
+          git clone https://github.com/flutter/flutter.git -b stable --depth 1 _flutter
+          echo "$GITHUB_WORKSPACE/_flutter/bin" >> $GITHUB_PATH
+
+      - name: Build APK
+        run: |
+          flutter pub get
+          flutter build apk --release
+
       - uses: actions/upload-artifact@v4
         with:
           name: app-release
