@@ -274,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
       endDate: selectedDate.add(const Duration(hours: 1, minutes: 30)),
       timeZone: 'Europe/Saratov',
     );
-    Add2Calendar.addEvent2Calendar(event);
+    Add2Calendar.addEvent(event); // Исправлено
   }
 
   @override
@@ -510,7 +510,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Column(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.calendar_add_on, color: Colors.white54, size: 20),
+                      icon: const Icon(Icons.event, color: Colors.white54, size: 20), // Исправлено на Icons.event
                       onPressed: () => _addPairToCalendar(lesson),
                     ),
                     IconButton(
