@@ -67,10 +67,9 @@ class MainContainer extends StatefulWidget {
 class _MainContainerState extends State<MainContainer> {
   int _currentIndex = 0;
   
-  // Общие данные приложения, доступные из обоих экранов
   int unexcusedHours = 22;
   final int maxHours = 36;
-  final Map<String, String> pairStatus = {}; // Ключ: "Date_Subject_Time", Значение: "present"|"excused"|"unexcused"
+  final Map<String, String> pairStatus = {}; 
   DateTime selectedDate = DateTime(2026, 10, 13);
 
   final Map<bool, Map<int, List<Lesson>>> masterSchedule = {
@@ -151,7 +150,7 @@ class _MainContainerState extends State<MainContainer> {
   }
 }
 
-// ЭКРАН 1: РАСПИСАНИЕ И КАЛЕНДАРЬ
+// ЭКРАН 1: РАСПИСАНИЕ
 class HomeScreen extends StatefulWidget {
   final int unexcusedHours;
   final int maxHours;
@@ -257,7 +256,6 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Карточка Прогресса
             Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
@@ -541,7 +539,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ЭКРАН 2: АНАЛИТИКА ПО ПРЕДМЕТАМ
+// ЭКРАН 2: АНАЛИТИКА
 class AnalyticsScreen extends StatelessWidget {
   final Map<String, String> pairStatus;
   final Map<bool, Map<int, List<Lesson>>> masterSchedule;
@@ -554,11 +552,9 @@ class AnalyticsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Собираем статистику по предметам
     Map<String, Map<String, int>> stats = {};
 
     pairStatus.forEach((key, status) {
-      // Ключ формата: "YYYY-M-D_Предмет_Время"
       List<String> parts = key.split('_');
       if (parts.length >= 2) {
         String subject = parts[1];
@@ -647,4 +643,4 @@ class AnalyticsScreen extends StatelessWidget {
       ],
     );
   }
-
+}
