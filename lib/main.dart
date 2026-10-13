@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:add_2_calendar/add_2_calendar.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:shared_preferences/shared_preferences.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
@@ -71,6 +73,37 @@ class _MainContainerState extends State<MainContainer> {
   final int maxHours = 36;
   final Map<String, String> pairStatus = {}; 
   DateTime selectedDate = DateTime(2026, 10, 13);
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedData();
+  }
+
+  // Загрузка сохраненных данных из памяти телефона
+  Future<void> _loadSavedData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      unexcusedHours = prefs.getInt('unexcusedHours') ?? 22;
+      String? savedStatuses = prefs.getString('pairStatus');
+      if (savedStatuses != null) {
+        Map<String, dynamic> decoded = jsonDecode(savedStatuses);
+        pairStatus.clear();
+        decoded.forEach((key, value) {
+          pairStatus[key] = value.toString();
+        });
+      }
+      _isLoading = false;
+    });
+  }
+
+  // Сохранение данных в память телефона
+  Future<void> _saveData() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('unexcusedHours', unexcusedHours);
+    await prefs.setString('pairStatus', jsonEncode(pairStatus));
+  }
 
   final Map<bool, Map<int, List<Lesson>>> masterSchedule = {
     true: { // Четная неделя
@@ -105,6 +138,12 @@ class _MainContainerState extends State<MainContainer> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF6C5CE7))),
+      );
+    }
+
     final List<Widget> screens = [
       HomeScreen(
         unexcusedHours: unexcusedHours,
@@ -119,6 +158,7 @@ class _MainContainerState extends State<MainContainer> {
             pairStatus.addAll(updatedStatuses);
             selectedDate = newDate;
           });
+          _saveData(); // Сохраняем при каждом изменении
         },
       ),
       AnalyticsScreen(
@@ -639,8 +679,9 @@ class AnalyticsScreen extends StatelessWidget {
       children: [
         Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
         const SizedBox(height: 2),
-        Text(title, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text(title, style: TextStyle(fontSize: 10, color: Colors.grey)),
       ],
     );
   }
 }
+
