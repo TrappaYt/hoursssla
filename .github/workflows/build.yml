@@ -22,21 +22,13 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.2'
+          flutter-version: '3.16.5'
           cache: true
 
-      - name: Generate Android files and fix Gradle/Kotlin config
+      - name: Create Android files
         run: |
           flutter create . --platforms=android
-          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 34/g' android/app/build.gradle
-          sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 34/g' android/app/build.gradle
-          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 21/g' android/app/build.gradle
           sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/g' android/app/build.gradle
-          
-          # Исправляем версию Kotlin в settings.gradle если он есть
-          if [ -f "android/settings.gradle" ]; then
-            sed -i 's/version ".*" apply false/version "1.9.24" apply false/g' android/app/../settings.gradle || true
-          fi
 
       - name: Install dependencies
         run: flutter pub get
