@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -15,15 +16,23 @@ const Color accentColor = Color(0xFF6C5CE7);
 const int absenceLimit = 36;
 const int initialAbsenceHours = 22;
 
-// Понедельник недели, принятой за чётную. Проверь чётность по календарю СГЮА.
+// 12 октября 2026 — понедельник. Сверь с официальным расписанием:
+// true, если неделя, начинающаяся 12 октября, чётная; иначе false.
 final DateTime weekAnchor = DateTime(2026, 10, 12);
+const bool anchorWeekIsEven = true;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   tz.initializeTimeZones();
+
   const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
   const settings = InitializationSettings(android: androidSettings);
   await notifications.initialize(settings);
+
+  final androidPlugin = notifications.resolvePlatformSpecificImplementation<
+      AndroidFlutterLocalNotificationsPlugin>();
+  await androidPlugin?.requestNotificationsPermission();
+
   runApp(const AttendanceApp());
 }
 
@@ -85,36 +94,30 @@ class _AttendanceHomeState extends State<AttendanceHome> {
   final Map<String, String> _statuses = {};
   bool _loading = true;
 
-  // Полное расписание. Отличия чётной/нечётной недели учитываются отдельно.
-  static const Map<int, List<Lesson>> _baseSchedule = {
-    DateTime.monday: [
-      Lesson(time: '10:05 — 11:35', subject: 'Гражданский процесс (Лекция)', room: 'ауд. 1/238', type: 'Лек.'),
-      Lesson(time: '11:40 — 13:10', subject: 'Финансовое право', room: 'ауд. 1/321', type: 'Сем.'),
-    ],
-    DateTime.tuesday: [
-      Lesson(time: '10:05 — 11:35', subject: 'Уголовный процесс (Лекция)', room: 'ауд. 1/238', type: 'Лек.'),
-      Lesson(time: '11:40 — 13:10', subject: 'Административное право', room: 'ауд. 1/408', type: 'Сем.'),
-    ],
-    DateTime.wednesday: [
-      Lesson(time: '08:30 — 10:00', subject: 'Уголовное право (Особ. часть)', room: 'ауд. 1/319', type: 'Сем.'),
-      Lesson(time: '10:05 — 11:35', subject: 'Уголовное право (Особ. часть - Лекция)', room: 'ауд. 1/238', type: 'Лек.'),
-      Lesson(time: '11:40 — 13:10', subject: 'Гражданское право (Особ. часть)', room: 'ауд. 1/409', type: 'Сем.'),
-      Lesson(time: '13:30 — 15:00', subject: 'Уголовный процесс', room: 'ауд. 1/409', type: 'Сем.'),
-    ],
-    DateTime.thursday: [
-      Lesson(time: '08:30 — 10:00', subject: 'Криминалистика', room: 'ауд. 5/611а', type: 'Сем.'),
-      Lesson(time: '10:05 — 11:35', subject: 'Гражданское право (Особ. часть)', room: 'ауд. 1/408', type: 'Сем.'),
-      Lesson(time: '11:40 — 13:10', subject: 'Финансовое право (Лекция)', room: 'ауд. 1/238', type: 'Лек.'),
-    ],
-    DateTime.friday: [
-      Lesson(time: '08:30 — 10:00', subject: 'Конституционные основы труда', room: 'Портал', type: 'Сем.'),
-      Lesson(time: '11:40 — 13:10', subject: 'Уголовное право (Особ. часть)', room: 'ауд. 1/408', type: 'Сем.'),
-      Lesson(time: '13:30 — 15:00', subject: 'Конституционные основы труда (Лекция)', room: 'Портал', type: 'Лек.'),
-    ],
-    DateTime.saturday: [
-      Lesson(time: '10:05 — 11:35', subject: 'Уголовный процесс', room: 'ауд. 1/321', type: 'Сем.'),
-    ],
-  };
+  static const List<String> _quotes = [
+    'закон суров, но пары сами себя не прогуляют.',
+    'презумпция невиновности. особенно до переклички.',
+    'лучше знать статью, чем объяснять отсутствие.',
+    'судья простит многое. деканат не факт.',
+    'одна пара сегодня дешевле пересдачи завтра.',
+    'адвокат дьявола, студент юридического факультета.',
+    'право на отдых не равно праву на пропуск.',
+    'пункт первый: не паниковать. пункт второй: учиться.',
+    '36 часов свободы. расходуй с умом.',
+    'доказательства присутствия: конспект и живой взгляд.',
+    'ваша честь, будильник не был надлежащим образом уведомлён.',
+    'сильная позиция начинается с присутствия на семинаре.',
+    'не всё потеряно, пока не закрыта ведомость.',
+    'обжаловать можно многое. пропущенную пару — не всегда.',
+  ];
+
+  String get _dailyQuote {
+    final now = DateTime.now();
+    final dayNumber = DateTime(now.year, now.month, now.day)
+        .difference(DateTime(2026, 1, 1))
+        .inDays;
+    return _quotes[dayNumber.abs() % _quotes.length];
+  }
 
   String _dateKey(DateTime date) =>
       '${date.year.toString().padLeft(4, '0')}-'
@@ -122,33 +125,70 @@ class _AttendanceHomeState extends State<AttendanceHome> {
       '${date.day.toString().padLeft(2, '0')}';
 
   bool _isEvenWeek(DateTime date) {
-    final monday = date.subtract(Duration(days: date.weekday - DateTime.monday));
-    final offset = monday.difference(weekAnchor).inDays ~/ 7;
-    return offset.isEven;
+    final monday = DateTime(date.year, date.month, date.day)
+        .subtract(Duration(days: date.weekday - DateTime.monday));
+    final anchorMonday = DateTime(
+      weekAnchor.year,
+      weekAnchor.month,
+      weekAnchor.day,
+    );
+    final weekOffset = monday.difference(anchorMonday).inDays ~/ 7;
+    return anchorWeekIsEven ? weekOffset.isEven : weekOffset.isOdd;
   }
 
+  // Расписание ИЮЮР24-08. Сверь чётность недель с расписанием кафедры.
   List<Lesson> _lessonsFor(DateTime date) {
-    final result = List<Lesson>.from(_baseSchedule[date.weekday] ?? const []);
-    if (date.weekday == DateTime.friday) {
-      result.insert(
-        1,
-        Lesson(
-          time: '10:05 — 11:35',
-          subject: _isEvenWeek(date)
-              ? 'Административное право (Лекция)'
-              : 'Психология проф. деятельности (Лекция)',
-          room: 'ауд. 1/238',
-          type: 'Лек.',
-        ),
-      );
-    }
-    if (date.weekday == DateTime.saturday && _isEvenWeek(date)) {
-      result.add(const Lesson(
-        time: '11:40 — 13:10',
-        subject: 'Гражданское право (Особ. часть - Лекция)',
-        room: 'ауд. 1/238',
-        type: 'Лек.',
-      ));
+    final isEven = _isEvenWeek(date);
+    final result = <Lesson>[];
+
+    switch (date.weekday) {
+      case DateTime.monday:
+        result.addAll([
+          const Lesson(time: '10:05 — 11:35', subject: 'Гражданский процесс (Лекция)', room: 'ауд. 1/238', type: 'Лек.'),
+          const Lesson(time: '11:40 — 13:10', subject: 'Финансовое право', room: 'ауд. 1/321', type: 'Сем.'),
+        ]);
+        break;
+      case DateTime.tuesday:
+        result.addAll([
+          const Lesson(time: '10:05 — 11:35', subject: 'Уголовный процесс (Лекция)', room: 'ауд. 1/238', type: 'Лек.'),
+          const Lesson(time: '11:40 — 13:10', subject: 'Административное право', room: 'ауд. 1/408', type: 'Сем.'),
+        ]);
+        break;
+      case DateTime.wednesday:
+        if (isEven) {
+          result.add(const Lesson(time: '10:05 — 11:35', subject: 'Уголовное право (Особ. часть — Лекция)', room: 'ауд. 1/238', type: 'Лек.'));
+        }
+        result.addAll([
+          const Lesson(time: '11:40 — 13:10', subject: 'Гражданское право (Особ. часть)', room: 'ауд. 1/409', type: 'Сем.'),
+          const Lesson(time: '13:30 — 15:00', subject: 'Уголовный процесс', room: 'ауд. 1/409', type: 'Сем.'),
+        ]);
+        break;
+      case DateTime.thursday:
+        result.addAll([
+          const Lesson(time: '08:30 — 10:00', subject: 'Криминалистика', room: 'ауд. 5/611а', type: 'Сем.'),
+          const Lesson(time: '10:05 — 11:35', subject: 'Гражданское право (Особ. часть)', room: 'ауд. 1/408', type: 'Сем.'),
+          const Lesson(time: '11:40 — 13:10', subject: 'Финансовое право (Лекция)', room: 'ауд. 1/238', type: 'Лек.'),
+        ]);
+        break;
+      case DateTime.friday:
+        result.addAll([
+          const Lesson(time: '08:30 — 10:00', subject: 'Конституционные основы труда', room: 'дистанционно', type: 'Сем.'),
+          Lesson(
+            time: '10:05 — 11:35',
+            subject: isEven ? 'Административное право (Лекция)' : 'Психология проф. деятельности (Лекция)',
+            room: 'ауд. 1/238',
+            type: 'Лек.',
+          ),
+          const Lesson(time: '11:40 — 13:10', subject: 'Уголовное право (Особ. часть)', room: 'ауд. 1/408', type: 'Сем.'),
+          const Lesson(time: '13:30 — 15:00', subject: 'Конституционные основы труда (Лекция)', room: 'дистанционно', type: 'Лек.'),
+        ]);
+        break;
+      case DateTime.saturday:
+        result.add(const Lesson(time: '10:05 — 11:35', subject: 'Уголовный процесс', room: 'ауд. 1/321', type: 'Сем.'));
+        if (isEven) {
+          result.add(const Lesson(time: '11:40 — 13:10', subject: 'Гражданское право (Особ. часть — Лекция)', room: 'ауд. 1/238', type: 'Лек.'));
+        }
+        break;
     }
     return result;
   }
@@ -173,21 +213,40 @@ class _AttendanceHomeState extends State<AttendanceHome> {
     if (rawStatuses != null) {
       try {
         final decoded = jsonDecode(rawStatuses) as Map<String, dynamic>;
-        _statuses.addAll(decoded.map((key, value) => MapEntry(key, value.toString())));
+        _statuses.addAll(
+          decoded.map((key, value) => MapEntry(key, value.toString())),
+        );
       } catch (_) {
         _statuses.clear();
       }
     }
 
-    // Перенос данных из прежней версии, где хранился общий счётчик.
     final oldHistorical = prefs.getInt('attendance.historicalHours');
     final oldTotal = prefs.getInt('unexcusedHours');
     if (oldHistorical != null) {
       _historicalHours = oldHistorical.clamp(0, absenceLimit).toInt();
     } else if (oldTotal != null) {
-      _historicalHours = (oldTotal - _trackedHours).clamp(0, absenceLimit).toInt();
+      _historicalHours = (oldTotal - _trackedHours)
+          .clamp(0, absenceLimit)
+          .toInt();
     } else {
       _historicalHours = initialAbsenceHours;
+    }
+
+    // Защита от старых или повреждённых данных, превышающих лимит.
+    if (_trackedHours > absenceLimit) {
+      final unexcusedKeys = _statuses.entries
+          .where((entry) => entry.value == 'unexcused')
+          .map((entry) => entry.key)
+          .toList();
+      for (final key in unexcusedKeys.skip(absenceLimit ~/ 2)) {
+        _statuses.remove(key);
+      }
+    }
+    if (_historicalHours + _trackedHours > absenceLimit) {
+      _historicalHours = (absenceLimit - _trackedHours)
+          .clamp(0, absenceLimit)
+          .toInt();
     }
 
     final savedDate = prefs.getString('attendance.selectedDate');
@@ -207,15 +266,31 @@ class _AttendanceHomeState extends State<AttendanceHome> {
     await prefs.setInt('unexcusedHours', _totalHours);
     await prefs.setString('attendance.statuses', jsonEncode(_statuses));
     await prefs.setString('attendance.selectedDate', _dateKey(_selectedDate));
+    await _syncWidget();
+  }
+
+  Future<void> _syncWidget() async {
+    final remaining = (absenceLimit - _totalHours).clamp(0, absenceLimit);
+    try {
+      await HomeWidget.saveWidgetData<int>('totalHours', _totalHours);
+      await HomeWidget.saveWidgetData<int>('remainingHours', remaining);
+      await HomeWidget.saveWidgetData<String>('quote', _dailyQuote);
+      await HomeWidget.updateWidget(
+        androidName: 'AttendanceWidgetProvider',
+      );
+    } catch (error) {
+      debugPrint('Не удалось обновить виджет: $error');
+    }
   }
 
   Future<void> _scheduleNotification() async {
     try {
-      // Saratov currently uses the Europe/Saratov timezone identifier.
       final location = tz.getLocation('Europe/Saratov');
       final now = tz.TZDateTime.now(location);
       var scheduled = tz.TZDateTime(location, now.year, now.month, now.day, 7, 30);
-      if (!scheduled.isAfter(now)) scheduled = scheduled.add(const Duration(days: 1));
+      if (!scheduled.isAfter(now)) {
+        scheduled = scheduled.add(const Duration(days: 1));
+      }
       const details = NotificationDetails(
         android: AndroidNotificationDetails(
           'attendance_morning',
@@ -232,21 +307,19 @@ class _AttendanceHomeState extends State<AttendanceHome> {
         scheduled,
         details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
       );
-    } catch (_) {
-      // Приложение продолжит работать, даже если уведомления не разрешены.
+    } catch (error) {
+      debugPrint('Не удалось запланировать уведомление: $error');
     }
   }
 
   Future<void> _setStatus(String key, String newStatus) async {
     final oldStatus = _statuses[key] ?? 'none';
     if (oldStatus == newStatus) return;
-    final proposed = _totalHours
-        - (oldStatus == 'unexcused' ? 2 : 0)
-        + (newStatus == 'unexcused' ? 2 : 0);
+    final proposed = _totalHours -
+        (oldStatus == 'unexcused' ? 2 : 0) +
+        (newStatus == 'unexcused' ? 2 : 0);
 
     if (proposed > absenceLimit) {
       if (!mounted) return;
@@ -297,15 +370,14 @@ class _AttendanceHomeState extends State<AttendanceHome> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator(color: accentColor)));
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: accentColor)),
+      );
     }
     return Scaffold(
       body: IndexedStack(
         index: _tab,
-        children: [
-          _buildScheduleTab(),
-          _buildAnalyticsTab(),
-        ],
+        children: [_buildScheduleTab(), _buildAnalyticsTab()],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _tab,
@@ -360,7 +432,7 @@ class _AttendanceHomeState extends State<AttendanceHome> {
               const SizedBox(height: 12),
               Text('Осталось $remaining ч. · примерно ${remaining ~/ 2} пар', style: TextStyle(color: color, fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              Text('До приложения: $_historicalHours ч.  ·  Отметки в приложении: $_trackedHours ч.', style: const TextStyle(color: Colors.white60, fontSize: 12)),
+              Text('До приложения: $_historicalHours ч. · Отметки в приложении: $_trackedHours ч.', style: const TextStyle(color: Colors.white60, fontSize: 12)),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(
@@ -371,6 +443,8 @@ class _AttendanceHomeState extends State<AttendanceHome> {
               ),
             ]),
           ),
+          const SizedBox(height: 12),
+          _buildQuoteCard(),
           const SizedBox(height: 16),
           Card(
             color: cardBackground,
@@ -393,6 +467,36 @@ class _AttendanceHomeState extends State<AttendanceHome> {
       ),
     );
   }
+
+  Widget _buildQuoteCard() => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF29234A), Color(0xFF1E1E2E)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: accentColor.withOpacity(0.35)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.format_quote, color: Color(0xFFA29BFE), size: 28),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('ЦИТАТА ДНЯ', style: TextStyle(color: Color(0xFFA29BFE), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                  const SizedBox(height: 6),
+                  Text(_dailyQuote, style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.35)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
 
   Widget _lessonCard(Lesson lesson) {
     final key = _statusKey(_selectedDate, lesson);
@@ -476,7 +580,9 @@ class _AttendanceHomeState extends State<AttendanceHome> {
           ElevatedButton(
             onPressed: () {
               final parsed = int.tryParse(controller.text.trim());
-              if (parsed != null && parsed >= 0 && parsed <= absenceLimit) Navigator.pop(dialogContext, parsed);
+              if (parsed != null && parsed >= 0 && parsed <= absenceLimit) {
+                Navigator.pop(dialogContext, parsed);
+              }
             },
             child: const Text('Сохранить'),
           ),
@@ -491,7 +597,6 @@ class _AttendanceHomeState extends State<AttendanceHome> {
     final Map<String, Map<String, int>> stats = {};
     final Map<String, String> subjectByLessonId = {};
 
-    // Названия предметов сопоставляются с расписанием; строковый ключ не парсится по подчёркиваниям.
     for (var month = 9; month <= 12; month++) {
       final days = DateTime(2026, month + 1, 0).day;
       for (var day = 1; day <= days; day++) {
