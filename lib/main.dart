@@ -1,24 +1,40 @@
+
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:add_2_calendar/add_2_calendar.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
-import 'package:shared_preferences/shared_preferences.dart';
 
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+final FlutterLocalNotificationsPlugin notifications =
     FlutterLocalNotificationsPlugin();
 
-void main() async {
+const Color bg = Color(0xFF0F0F1A);
+const Color panel = Color(0xFF1E1E2E);
+const Color purple = Color(0xFF6C5CE7);
+const Color mutedPurple = Color(0xFFA29BFE);
+
+const int maxHours = 36;
+const DateTime weekAnchor = DateTime(2026, 10, 13);
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   tz.initializeTimeZones();
-  
-  const AndroidInitializationSettings initializationSettingsAndroid =
+
+  const androidSettings =
       AndroidInitializationSettings('@mipmap/ic_launcher');
-  const InitializationSettings initializationSettings =
-      InitializationSettings(android: initializationSettingsAndroid);
-  
-  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+  try {
+    await notifications.initialize(
+      const InitializationSettings(android: androidSettings),
+    );
+  } catch (e) {
+    debugPrint('Notifications initialization failed: $e');
+  }
+
   runApp(const AttendanceApp());
 }
 
@@ -26,9 +42,9 @@ class Lesson {
   final String time;
   final String subject;
   final String room;
-  final String type; // Сем. / Лек.
+  final String type;
 
-  Lesson({
+  const Lesson({
     required this.time,
     required this.subject,
     required this.room,
@@ -37,21 +53,29 @@ class Lesson {
 }
 
 class AttendanceApp extends StatelessWidget {
-  const AttendanceApp({Key? key}) : super(key: key);
+  const AttendanceApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Моя посещаемость',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0F0F1A),
-        primaryColor: const Color(0xFF6C5CE7),
-        cardColor: const Color(0xFF1E1E2E),
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: bg,
+        primaryColor: purple,
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF6C5CE7),
+          primary: purple,
           secondary: Color(0xFFFF7675),
-          surface: Color(0xFF1E1E2E),
+          surface: panel,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: bg,
+          elevation: 0,
+          centerTitle: true,
+        ),
+        dialogTheme: const DialogTheme(
+          backgroundColor: panel,
         ),
       ),
       home: const MainContainer(),
@@ -59,129 +83,308 @@ class AttendanceApp extends StatelessWidget {
   }
 }
 
+final Map<bool, Map<int, List<Lesson>>> masterSchedule = {
+  // Четная неделя
+  true: {
+    DateTime.monday: const [
+      Lesson(
+        time: '11:40 — 13:10',
+        subject: 'Финансовое право',
+        room: 'каб. 402',
+        type: 'Сем.',
+      ),
+    ],
+    DateTime.tuesday: const [
+      Lesson(
+        time: '11:40 — 13:10',
+        subject: 'Административное право',
+        room: 'каб. 315',
+        type: 'Сем.',
+      ),
+    ],
+    DateTime.wednesday: const [
+      Lesson(
+        time: '11:40 — 13:10',
+        subject: 'Гражданский процесс',
+        room: 'каб. 501',
+        type: 'Сем.',
+      ),
+      Lesson(
+        time: '13:30 — 15:00',
+        subject: 'Уголовный процесс',
+        room: 'каб. 508',
+        type: 'Сем.',
+      ),
+    ],
+    DateTime.thursday: const [
+      Lesson(
+        time: '08:30 — 10:00',
+        subject: 'Криминалистика',
+        room: 'каб. 210',
+        type: 'Сем.',
+      ),
+      Lesson(
+        time: '10:05 — 11:35',
+        subject: 'Гражданское право',
+        room: 'каб. 412',
+        type: 'Сем.',
+      ),
+    ],
+    DateTime.friday: const [
+      Lesson(
+        time: '08:30 — 10:00',
+        subject: 'Конституционное право',
+        room: 'каб. 302',
+        type: 'Сем.',
+      ),
+      Lesson(
+        time: '11:40 — 13:10',
+        subject: 'Уголовное право',
+        room: 'каб. 408',
+        type: 'Сем.',
+      ),
+    ],
+    DateTime.saturday: const [
+      Lesson(
+        time: '10:05 — 11:35',
+        subject: 'Гражданское право',
+        room: 'каб. 412',
+        type: 'Сем.',
+      ),
+    ],
+  },
+
+  // Нечетная неделя
+  false: {
+    DateTime.monday: const [
+      Lesson(
+        time: '08:30 — 10:00',
+        subject: 'Финансовое право',
+        room: 'Ауд. 1 (Лекция)',
+        type: 'Лек.',
+      ),
+      Lesson(
+        time: '11:40 — 13:10',
+        subject: 'Финансовое право',
+        room: 'каб. 402',
+        type: 'Сем.',
+      ),
+    ],
+    DateTime.tuesday: const [
+      Lesson(
+        time: '10:05 — 11:35',
+        subject: 'Административное право',
+        room: 'каб. 315',
+        type: 'Сем.',
+      ),
+    ],
+    DateTime.wednesday: const [
+      Lesson(
+        time: '11:40 — 13:10',
+        subject: 'Гражданский процесс',
+        room: 'каб. 501',
+        type: 'Сем.',
+      ),
+    ],
+    DateTime.thursday: const [
+      Lesson(
+        time: '08:30 — 10:00',
+        subject: 'Криминалистика',
+        room: 'каб. 210',
+        type: 'Сем.',
+      ),
+    ],
+    DateTime.friday: const [
+      Lesson(
+        time: '11:40 — 13:10',
+        subject: 'Уголовное право',
+        room: 'каб. 408',
+        type: 'Сем.',
+      ),
+    ],
+    DateTime.saturday: const [
+      Lesson(
+        time: '10:05 — 11:35',
+        subject: 'Гражданское право',
+        room: 'каб. 412',
+        type: 'Сем.',
+      ),
+    ],
+  },
+};
+
+String dateKey(DateTime date) {
+  final d = date.day.toString().padLeft(2, '0');
+  final m = date.month.toString().padLeft(2, '0');
+  return '${date.year}-$m-$d';
+}
+
+DateTime parseLessonTime(DateTime date, String time) {
+  final parts = time.split(' — ')[0].split(':');
+  return DateTime(
+    date.year,
+    date.month,
+    date.day,
+    int.parse(parts[0]),
+    int.parse(parts[1]),
+  );
+}
+
+DateTime parseLessonEnd(DateTime date, String time) {
+  final parts = time.split(' — ')[1].split(':');
+  return DateTime(
+    date.year,
+    date.month,
+    date.day,
+    int.parse(parts[0]),
+    int.parse(parts[1]),
+  );
+}
+
+String lessonKey(DateTime date, Lesson lesson) {
+  return '${dateKey(date)}|${lesson.subject}|${lesson.time}|${lesson.room}';
+}
+
+bool isEvenWeek(DateTime date) {
+  final days = DateTime(date.year, date.month, date.day)
+      .difference(weekAnchor)
+      .inDays;
+  final weekOffset = (days / 7).floor();
+  return weekOffset.isEven;
+}
+
 class MainContainer extends StatefulWidget {
-  const MainContainer({Key? key}) : super(key: key);
+  const MainContainer({super.key});
 
   @override
   State<MainContainer> createState() => _MainContainerState();
 }
 
 class _MainContainerState extends State<MainContainer> {
-  int _currentIndex = 0;
-  
+  int currentIndex = 0;
   int unexcusedHours = 22;
-  final int maxHours = 36;
-  final Map<String, String> pairStatus = {}; 
   DateTime selectedDate = DateTime(2026, 10, 13);
-  bool _isLoading = true;
+  final Map<String, String> pairStatus = {};
+  bool loading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadSavedData();
+    loadData();
   }
 
-  // Загрузка сохраненных данных из памяти телефона
-  Future<void> _loadSavedData() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      unexcusedHours = prefs.getInt('unexcusedHours') ?? 22;
-      String? savedStatuses = prefs.getString('pairStatus');
-      if (savedStatuses != null) {
-        Map<String, dynamic> decoded = jsonDecode(savedStatuses);
-        pairStatus.clear();
-        decoded.forEach((key, value) {
-          pairStatus[key] = value.toString();
+  Future<void> loadData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString('pairStatus');
+
+      if (saved != null) {
+        final decoded = jsonDecode(saved) as Map<String, dynamic>;
+        pairStatus
+          ..clear()
+          ..addAll(
+            decoded.map(
+              (key, value) => MapEntry(key, value.toString()),
+            ),
+          );
+      }
+
+      if (mounted) {
+        setState(() {
+          unexcusedHours =
+              prefs.getInt('unexcusedHours') ?? 22;
+          loading = false;
         });
       }
-      _isLoading = false;
-    });
+    } catch (e) {
+      debugPrint('Loading saved data failed: $e');
+      if (mounted) setState(() => loading = false);
+    }
   }
 
-  // Сохранение данных в память телефона
-  Future<void> _saveData() async {
+  Future<void> saveData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('unexcusedHours', unexcusedHours);
     await prefs.setString('pairStatus', jsonEncode(pairStatus));
   }
 
-  final Map<bool, Map<int, List<Lesson>>> masterSchedule = {
-    true: { // Четная неделя
-      DateTime.monday: [Lesson(time: "11:40 — 13:10", subject: "Финансовое право", room: "каб. 402", type: "Сем.")],
-      DateTime.tuesday: [Lesson(time: "11:40 — 13:10", subject: "Административное право", room: "каб. 315", type: "Сем.")],
-      DateTime.wednesday: [
-        Lesson(time: "11:40 — 13:10", subject: "Гражданский процесс", room: "каб. 501", type: "Сем."),
-        Lesson(time: "13:30 — 15:00", subject: "Уголовный процесс", room: "каб. 508", type: "Сем."),
-      ],
-      DateTime.thursday: [
-        Lesson(time: "08:30 — 10:00", subject: "Криминалистика", room: "каб. 210", type: "Сем."),
-        Lesson(time: "10:05 — 11:35", subject: "Гражданское право", room: "каб. 412", type: "Сем."),
-      ],
-      DateTime.friday: [
-        Lesson(time: "08:30 — 10:00", subject: "Конституционное право", room: "каб. 302", type: "Сем."),
-        Lesson(time: "11:40 — 13:10", subject: "Уголовное право", room: "каб. 408", type: "Сем."),
-      ],
-      DateTime.saturday: [Lesson(time: "10:05 — 11:35", subject: "Гражданское право", room: "каб. 412", type: "Сем.")],
-    },
-    false: { // Нечетная неделя
-      DateTime.monday: [
-        Lesson(time: "08:30 — 10:00", subject: "Финансовое право", room: "Ауд. 1 (Лекция)", type: "Лек."),
-        Lesson(time: "11:40 — 13:10", subject: "Финансовое право", room: "каб. 402", type: "Сем."),
-      ],
-      DateTime.tuesday: [Lesson(time: "10:05 — 11:35", subject: "Административное право", room: "каб. 315", type: "Сем.")],
-      DateTime.wednesday: [Lesson(time: "11:40 — 13:10", subject: "Гражданский процесс", room: "каб. 501", type: "Сем.")],
-      DateTime.thursday: [Lesson(time: "08:30 — 10:00", subject: "Криминалистика", room: "каб. 210", type: "Сем.")],
-      DateTime.friday: [Lesson(time: "11:40 — 13:10", subject: "Уголовное право", room: "каб. 408", type: "Сем.")],
-      DateTime.saturday: [Lesson(time: "10:05 — 11:35", subject: "Гражданское право", room: "каб. 412", type: "Сем.")],
+  void updateStatus(String key, String newStatus) {
+    final oldStatus = pairStatus[key] ?? 'none';
+    if (oldStatus == newStatus) return;
+
+    int updatedHours = unexcusedHours;
+
+    if (oldStatus == 'unexcused') {
+      updatedHours -= 2;
     }
-  };
+
+    if (newStatus == 'unexcused') {
+      if (updatedHours + 2 > maxHours) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Лимит в 36 часов будет превышен.'),
+          ),
+        );
+        return;
+      }
+      updatedHours += 2;
+    }
+
+    setState(() {
+      unexcusedHours = updatedHours.clamp(0, maxHours);
+      if (newStatus == 'none') {
+        pairStatus.remove(key);
+      } else {
+        pairStatus[key] = newStatus;
+      }
+    });
+
+    saveData();
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (loading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: Color(0xFF6C5CE7))),
+        body: Center(
+          child: CircularProgressIndicator(color: purple),
+        ),
       );
     }
 
-    final List<Widget> screens = [
-      HomeScreen(
-        unexcusedHours: unexcusedHours,
-        maxHours: maxHours,
-        pairStatus: pairStatus,
-        selectedDate: selectedDate,
-        masterSchedule: masterSchedule,
-        onStatusChanged: (newHours, updatedStatuses, newDate) {
-          setState(() {
-            unexcusedHours = newHours;
-            pairStatus.clear();
-            pairStatus.addAll(updatedStatuses);
-            selectedDate = newDate;
-          });
-          _saveData();
-        },
-      ),
-      AnalyticsScreen(
-        pairStatus: pairStatus,
-        masterSchedule: masterSchedule,
-      ),
-    ];
-
     return Scaffold(
-      body: screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        backgroundColor: const Color(0xFF1E1E2E),
-        selectedItemColor: const Color(0xFF6C5CE7),
-        unselectedItemColor: Colors.grey,
-        onTap: (index) => setState(() => _currentIndex = index),
-        items: const [
-          BottomNavigationBarItem(
+      body: IndexedStack(
+        index: currentIndex,
+        children: [
+          HomeScreen(
+            unexcusedHours: unexcusedHours,
+            selectedDate: selectedDate,
+            pairStatus: pairStatus,
+            onDateChanged: (date) {
+              setState(() => selectedDate = date);
+            },
+            onStatusChanged: updateStatus,
+          ),
+          AnalyticsScreen(
+            pairStatus: pairStatus,
+            unexcusedHours: unexcusedHours,
+          ),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: currentIndex,
+        backgroundColor: panel,
+        indicatorColor: purple.withOpacity(0.25),
+        onDestinationSelected: (index) {
+          setState(() => currentIndex = index);
+        },
+        destinations: const [
+          NavigationDestination(
             icon: Icon(Icons.schedule),
             label: 'Расписание',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.analytics),
+          NavigationDestination(
+            icon: Icon(Icons.analytics_outlined),
             label: 'Аналитика',
           ),
         ],
@@ -190,496 +393,554 @@ class _MainContainerState extends State<MainContainer> {
   }
 }
 
-// ЭКРАН 1: РАСПИСАНИЕ
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends StatelessWidget {
   final int unexcusedHours;
-  final int maxHours;
-  final Map<String, String> pairStatus;
   final DateTime selectedDate;
-  final Map<bool, Map<int, List<Lesson>>> masterSchedule;
-  final Function(int, Map<String, String>, DateTime) onStatusChanged;
+  final Map<String, String> pairStatus;
+  final ValueChanged<DateTime> onDateChanged;
+  final void Function(String, String) onStatusChanged;
 
   const HomeScreen({
-    Key? key,
+    super.key,
     required this.unexcusedHours,
-    required this.maxHours,
-    required this.pairStatus,
     required this.selectedDate,
-    required this.masterSchedule,
+    required this.pairStatus,
+    required this.onDateChanged,
     required this.onStatusChanged,
-  }) : super(key: key);
+  });
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  late int unexcusedHours;
-  late DateTime selectedDate;
-  late Map<String, String> pairStatus;
-
-  @override
-  void initState() {
-    super.initState();
-    unexcusedHours = widget.unexcusedHours;
-    selectedDate = widget.selectedDate;
-    pairStatus = Map.from(widget.pairStatus);
-    _scheduleMorningNotification();
-  }
-
-  bool get isEvenWeek {
-    int diffDays = selectedDate.difference(DateTime(2026, 10, 13)).inDays;
-    int weekOffset = diffDays ~/ 7;
-    if (diffDays < 0 && diffDays % 7 != 0) weekOffset -= 1;
-    return weekOffset % 2 == 0;
-  }
-
-  final List<String> quotes = [
-    "«Дисциплина — это выбор между тем, чего ты хочешь сейчас, и тем, чего ты хочешь больше всего.»",
-    "«Лучшая защита от проблем на сессии — твое присутствие на парах.»",
-    "«Юрист должен знать законы, а студент ИЮЮР24-08 — беречь лимит пропусков!»",
-  ];
-
-  Future<void> _scheduleMorningNotification() async {
-    final tz.Location saratovLocation = tz.getLocation('Europe/Saratov');
-    final tz.TZDateTime now = tz.TZDateTime.now(saratovLocation);
-    tz.TZDateTime scheduledDate = tz.TZDateTime(saratovLocation, now.year, now.month, now.day, 7, 30);
-    if (scheduledDate.isBefore(now)) scheduledDate = scheduledDate.add(const Duration(days: 1));
-
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'daily_attendance_channel',
-      'Утренние напоминания',
-      channelDescription: 'Напоминания о парах и лимите пропусков',
-      importance: Importance.high,
-      priority: Priority.high,
-    );
-    await flutterLocalNotificationsPlugin.zonedSchedule(
-      0,
-      'Моя посещаемость',
-      'Проверь расписание! У тебя осталось ${widget.maxHours - unexcusedHours} ч. пропусков.',
-      scheduledDate,
-      const NotificationDetails(android: androidDetails),
-      androidAllowWhileIdle: true,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: DateTimeComponents.time,
-    );
-  }
-
-  void _addPairToCalendar(Lesson lesson) {
-    final Event event = Event(
-      title: '${lesson.subject} (${lesson.type})',
-      description: 'Занятие группы ИЮЮР24-08 в ${lesson.room}',
-      location: 'СГЮА, ${lesson.room}',
-      startDate: selectedDate,
-      endDate: selectedDate.add(const Duration(hours: 1, minutes: 30)),
-      timeZone: 'Europe/Saratov',
-    );
-    Add2Calendar.addEvent(event); // Исправлено
+  Color get statusColor {
+    if (unexcusedHours >= 34) return Colors.redAccent;
+    if (unexcusedHours >= 28) return Colors.orangeAccent;
+    return Colors.greenAccent;
   }
 
   @override
   Widget build(BuildContext context) {
-    double progress = (unexcusedHours / widget.maxHours).clamp(0.0, 1.0);
-    Color statusColor = Colors.greenAccent;
-    if (unexcusedHours >= 28) statusColor = Colors.orangeAccent;
-    if (unexcusedHours >= 34) statusColor = Colors.redAccent;
+    final remaining = maxHours - unexcusedHours;
+    final even = isEvenWeek(selectedDate);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Моя посещаемость', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        centerTitle: true,
+        title: const Text(
+          'Моя посещаемость',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                gradient: LinearGradient(
-                  colors: [const Color(0xFF1E1E2E), statusColor.withOpacity(0.15)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                border: Border.all(color: statusColor.withOpacity(0.3), width: 1.5),
-              ),
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Лимит Н/У пропусков", style: TextStyle(color: Colors.grey, fontSize: 13)),
-                          SizedBox(height: 4),
-                          Text("Статус посещаемости", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          "$unexcusedHours / ${widget.maxHours} ч",
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: statusColor),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 10,
-                      backgroundColor: Colors.white10,
-                      color: statusColor,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text("Осталось: ${widget.maxHours - unexcusedHours} ч.", style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                      Text("Запас: ${(widget.maxHours - unexcusedHours) ~/ 2} пар", style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ],
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: panel,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: statusColor.withOpacity(0.4),
               ),
             ),
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF6C5CE7).withOpacity(0.12),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF6C5CE7).withOpacity(0.3)),
-              ),
-              child: Text(
-                quotes[unexcusedHours % quotes.length],
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12.5, color: Color(0xFFA29BFE)),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6C5CE7).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFF6C5CE7)),
+                const Text(
+                  'Лимит неуважительных пропусков',
+                  style: TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '$unexcusedHours',
+                      style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.bold,
+                        color: statusColor,
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 6),
+                      child: Text(
+                        ' / 36 часов',
+                        style: TextStyle(color: Colors.white60),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: unexcusedHours / maxHours,
+                    minHeight: 10,
+                    backgroundColor: Colors.white10,
+                    color: statusColor,
                   ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Осталось: $remaining ч.',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Запас: ${remaining ~/ 2} полных пар',
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: purple.withOpacity(0.13),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Text(
+              '«Лучшая защита от проблем на сессии — присутствие на парах».',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: mutedPurple,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: panel,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
                   child: Text(
-                    isEvenWeek ? "🗓 Неделя: Четная (II)" : "🗓 Неделя: Нечетная (I)",
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFA29BFE), fontSize: 13),
+                    even ? 'Четная неделя' : 'Нечетная неделя',
+                    style: const TextStyle(
+                      color: mutedPurple,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.calendar_today, color: Color(0xFF6C5CE7)),
+                  icon: const Icon(Icons.calendar_month, color: purple),
                   onPressed: () async {
-                    DateTime? picked = await showDatePicker(
+                    final picked = await showDatePicker(
                       context: context,
                       initialDate: selectedDate,
                       firstDate: DateTime(2026, 9, 1),
                       lastDate: DateTime(2026, 12, 31),
                     );
-                    if (picked != null) {
-                      setState(() {
-                        selectedDate = picked;
-                        widget.onStatusChanged(unexcusedHours, pairStatus, selectedDate);
-                      });
-                    }
+
+                    if (picked != null) onDateChanged(picked);
                   },
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              "Расписание на ${selectedDate.day}.${selectedDate.month}.${selectedDate.year}",
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white),
-            ),
-            const SizedBox(height: 12),
-            _buildPairsList(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPairsList() {
-    Map<int, List<Lesson>> scheduleForWeek = widget.masterSchedule[isEvenWeek]!;
-    List<Lesson>? dayLessons = scheduleForWeek[selectedDate.weekday];
-    String dateStr = "${selectedDate.year}-${selectedDate.month}-${selectedDate.day}";
-
-    if (dayLessons == null || dayLessons.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(24),
-        width: double.infinity,
-        decoration: BoxDecoration(color: const Color(0xFF1E1E2E), borderRadius: BorderRadius.circular(16)),
-        child: const Column(
-          children: [
-            Icon(Icons.bedtime_outlined, color: Colors.grey, size: 36),
-            SizedBox(height: 8),
-            Text("Выходной день — пар нет!", style: TextStyle(color: Colors.grey, fontSize: 14)),
-          ],
-        ),
-      );
-    }
-
-    return Column(
-      children: dayLessons.map((lesson) {
-        String key = "${dateStr}_${lesson.subject}_${lesson.time}";
-        String status = pairStatus[key] ?? "none";
-
-        Color cardBorder = Colors.white10;
-        String statusLabel = "Не отмечено";
-        IconData statusIcon = Icons.radio_button_unchecked;
-        Color iconColor = Colors.grey;
-
-        if (status == "present") {
-          cardBorder = Colors.greenAccent.withOpacity(0.5);
-          statusLabel = "Присутствовал";
-          statusIcon = Icons.check_circle;
-          iconColor = Colors.greenAccent;
-        } else if (status == "excused") {
-          cardBorder = Colors.lightBlueAccent.withOpacity(0.5);
-          statusLabel = "Уважительная причина";
-          statusIcon = Icons.info;
-          iconColor = Colors.lightBlueAccent;
-        } else if (status == "unexcused") {
-          cardBorder = Colors.redAccent.withOpacity(0.5);
-          statusLabel = "Н/У пропуск (+2ч)";
-          statusIcon = Icons.warning;
-          iconColor = Colors.redAccent;
-        }
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E2E),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: cardBorder, width: 1.2),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(14.0),
-            child: Row(
-              children: [
-                Icon(statusIcon, color: iconColor, size: 28),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(lesson.time, style: const TextStyle(color: Color(0xFFA29BFE), fontSize: 12, fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(6)),
-                            child: Text(lesson.type, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(lesson.subject, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.meeting_room, size: 13, color: Colors.amberAccent),
-                          const SizedBox(width: 4),
-                          Text(lesson.room, style: const TextStyle(fontSize: 12, color: Colors.amberAccent)),
-                          const SizedBox(width: 10),
-                          Text("•  $statusLabel", style: TextStyle(fontSize: 11, color: iconColor)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.event, color: Colors.white54, size: 20), // Исправлено на Icons.event
-                      onPressed: () => _addPairToCalendar(lesson),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.edit, color: Color(0xFF6C5CE7), size: 20),
-                      onPressed: () => _showMarkDialog(key, lesson),
-                    ),
-                  ],
-                ),
-              ],
+          const SizedBox(height: 12),
+          Text(
+            'Расписание на ${dateKey(selectedDate)}',
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
             ),
           ),
-        );
-      }).toList(),
-    );
-  }
-
-  void _showMarkDialog(String key, Lesson lesson) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E2E),
-        title: Text(lesson.subject, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        content: Text("Отметь статус для аудитории ${lesson.room}:"),
-        actions: [
-          TextButton(
-            onPressed: () {
-              _updatePairStatus(key, "present");
-              Navigator.pop(context);
-            },
-            child: const Text("Был (0 ч)", style: TextStyle(color: Colors.greenAccent)),
-          ),
-          TextButton(
-            onPressed: () {
-              _updatePairStatus(key, "excused");
-              Navigator.pop(context);
-            },
-            child: const Text("Уважительная (0 ч)", style: TextStyle(color: Colors.lightBlueAccent)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () {
-              _updatePairStatus(key, "unexcused");
-              Navigator.pop(context);
-            },
-            child: const Text("Н/У (+2 ч)"),
-          ),
+          const SizedBox(height: 12),
+          ...buildLessons(context, even),
         ],
       ),
     );
   }
 
-  void _updatePairStatus(String key, String newStatus) {
-    setState(() {
-      String oldStatus = pairStatus[key] ?? "none";
-      if (oldStatus == "unexcused") {
-        unexcusedHours = (unexcusedHours - 2).clamp(0, widget.maxHours);
+  List<Widget> buildLessons(BuildContext context, bool even) {
+    final lessons = masterSchedule[even]![selectedDate.weekday] ?? [];
+
+    if (lessons.isEmpty) {
+      return [
+        Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: panel,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Column(
+            children: [
+              Icon(Icons.bedtime_outlined, size: 36, color: Colors.grey),
+              SizedBox(height: 8),
+              Text(
+                'Выходной день — пар нет!',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+
+    return lessons.map((lesson) {
+      final key = lessonKey(selectedDate, lesson);
+      final status = pairStatus[key] ?? 'none';
+
+      Color color = Colors.grey;
+      String label = 'Не отмечено';
+      IconData icon = Icons.radio_button_unchecked;
+
+      switch (status) {
+        case 'present':
+          color = Colors.greenAccent;
+          label = 'Присутствовал';
+          icon = Icons.check_circle;
+          break;
+        case 'excused':
+          color = Colors.lightBlueAccent;
+          label = 'Уважительная причина';
+          icon = Icons.info;
+          break;
+        case 'unexcused':
+          color = Colors.redAccent;
+          label = 'Н/У пропуск (+2 ч)';
+          icon = Icons.warning;
+          break;
       }
-      if (newStatus == "unexcused") {
-        if (unexcusedHours + 2 <= widget.maxHours) {
-          unexcusedHours += 2;
-        }
-      }
-      pairStatus[key] = newStatus;
-      widget.onStatusChanged(unexcusedHours, pairStatus, selectedDate);
-    });
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: panel,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 25),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    lesson.subject,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Добавить в календарь',
+                  icon: const Icon(Icons.event, color: mutedPurple),
+                  onPressed: () => addToCalendar(context, lesson),
+                ),
+                IconButton(
+                  tooltip: 'Отметить посещаемость',
+                  icon: const Icon(Icons.edit, color: purple),
+                  onPressed: () => showStatusDialog(context, key, lesson),
+                ),
+              ],
+            ),
+            Text(
+              '${lesson.time}  •  ${lesson.type}',
+              style: const TextStyle(color: mutedPurple, fontSize: 12),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              lesson.room,
+              style: const TextStyle(
+                color: Colors.amberAccent,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(label, style: TextStyle(color: color, fontSize: 12)),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
+  Future<void> addToCalendar(BuildContext context, Lesson lesson) async {
+    final event = Event(
+      title: '${lesson.subject} (${lesson.type})',
+      description: 'Занятие группы ИЮЮР24-08 в ${lesson.room}',
+      location: 'СГЮА, ${lesson.room}',
+      startDate: parseLessonTime(selectedDate, lesson.time),
+      endDate: parseLessonEnd(selectedDate, lesson.time),
+      allDay: false,
+      androidParams: const AndroidParams(),
+    );
+
+    try {
+      final success = await Add2Calendar.addEvent2Cal(event);
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Открой календарь и подтверди добавление пары.'
+                : 'Не удалось открыть календарь.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка календаря: $e')),
+      );
+    }
+  }
+
+  void showStatusDialog(
+    BuildContext context,
+    String key,
+    Lesson lesson,
+  ) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          lesson.subject,
+          style: const TextStyle(fontSize: 17),
+        ),
+        content: Text('Отметь посещаемость: ${lesson.time}'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              onStatusChanged(key, 'present');
+              Navigator.pop(dialogContext);
+            },
+            child: const Text(
+              'Был (0 ч)',
+              style: TextStyle(color: Colors.greenAccent),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              onStatusChanged(key, 'excused');
+              Navigator.pop(dialogContext);
+            },
+            child: const Text(
+              'Уважительная (0 ч)',
+              style: TextStyle(color: Colors.lightBlueAccent),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              onStatusChanged(key, 'unexcused');
+              Navigator.pop(dialogContext);
+            },
+            child: const Text(
+              'Н/У (+2 ч)',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              onStatusChanged(key, 'none');
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Сбросить отметку'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
-// ЭКРАН 2: АНАЛИТИКА
 class AnalyticsScreen extends StatelessWidget {
   final Map<String, String> pairStatus;
-  final Map<bool, Map<int, List<Lesson>>> masterSchedule;
+  final int unexcusedHours;
 
   const AnalyticsScreen({
-    Key? key,
+    super.key,
     required this.pairStatus,
-    required this.masterSchedule,
-  }) : super(key: key);
+    required this.unexcusedHours,
+  });
 
   @override
   Widget build(BuildContext context) {
-    Map<String, Map<String, int>> stats = {};
+    final Map<String, Map<String, int>> stats = {};
 
-    pairStatus.forEach((key, status) {
-      List<String> parts = key.split('_');
-      if (parts.length >= 2) {
-        String subject = parts[1];
-        stats.putIfAbsent(subject, () => {'unexcused': 0, 'excused': 0, 'present': 0});
-        if (status == 'unexcused') stats[subject]!['unexcused'] = stats[subject]!['unexcused']! + 2;
-        if (status == 'excused') stats[subject]!['excused'] = stats[subject]!['excused']! + 1;
-        if (status == 'present') stats[subject]!['present'] = stats[subject]!['present']! + 1;
+    for (final entry in pairStatus.entries) {
+      final parts = entry.key.split('|');
+      if (parts.length < 4) continue;
+
+      final subject = parts[1];
+      final status = entry.value;
+
+      stats.putIfAbsent(
+        subject,
+        () => {'unexcused': 0, 'excused': 0, 'present': 0},
+      );
+
+      if (status == 'unexcused') {
+        stats[subject]!['unexcused'] =
+            stats[subject]!['unexcused']! + 2;
+      } else if (status == 'excused') {
+        stats[subject]!['excused'] =
+            stats[subject]!['excused']! + 1;
+      } else if (status == 'present') {
+        stats[subject]!['present'] =
+            stats[subject]!['present']! + 1;
       }
-    });
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Аналитика по предметам', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
+        title: const Text(
+          'Аналитика',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
       body: stats.isEmpty
-          ? Center(
+          ? const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.bar_chart, size: 64, color: Colors.grey),
+                children: [
+                  Icon(Icons.bar_chart, size: 60, color: Colors.grey),
                   SizedBox(height: 12),
-                  Text("Пока нет отметок посещаемости", style: TextStyle(color: Colors.grey, fontSize: 15)),
-                  SizedBox(height: 4),
-                  Text("Отмечай пары во вкладке «Расписание»", style: TextStyle(color: Colors.white54, fontSize: 12)),
+                  Text(
+                    'Пока нет отметок посещаемости',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Отмечай пары во вкладке «Расписание»',
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
                 ],
               ),
             )
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                const Text(
-                  "Статистика пропусков и посещений:",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white70),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: panel,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Общий лимит пропусков',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '$unexcusedHours / $maxHours ч.',
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                          color: unexcusedHours >= 34
+                              ? Colors.redAccent
+                              : mutedPurple,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      LinearProgressIndicator(
+                        value: (unexcusedHours / maxHours).clamp(0.0, 1.0),
+                        color: unexcusedHours >= 34
+                            ? Colors.redAccent
+                            : purple,
+                        backgroundColor: Colors.white10,
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 16),
                 ...stats.entries.map((entry) {
-                  String subject = entry.key;
-                  int unexcused = entry.value['unexcused']!;
-                  int excused = entry.value['excused']!;
-                  int present = entry.value['present']!;
+                  final values = entry.value;
+                  final absent = values['unexcused']!;
+                  final excused = values['excused']!;
+                  final present = values['present']!;
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E2E),
+                      color: panel,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: unexcused > 0 ? Colors.redAccent.withOpacity(0.4) : Colors.white10,
+                        color: absent > 0
+                            ? Colors.redAccent.withOpacity(0.4)
+                            : Colors.white10,
                       ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          subject,
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                          entry.key,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 14),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
-                            _buildBadge("Н/У пропуски", "$unexcused ч.", Colors.redAccent),
-                            _buildBadge("Уважительные", "$excused пар", Colors.lightBlueAccent),
-                            _buildBadge("Посещено", "$present пар", Colors.greenAccent),
+                            Expanded(
+                              child: statistic(
+                                'Н/У пропуски',
+                                '$absent ч.',
+                                Colors.redAccent,
+                              ),
+                            ),
+                            Expanded(
+                              child: statistic(
+                                'Уважительные',
+                                '$excused пар',
+                                Colors.lightBlueAccent,
+                              ),
+                            ),
+                            Expanded(
+                              child: statistic(
+                                'Посещено',
+                                '$present пар',
+                                Colors.greenAccent,
+                              ),
+                            ),
                           ],
                         ),
                       ],
                     ),
                   );
-                }).toList(),
+                }),
               ],
             ),
     );
   }
 
-  Widget _buildBadge(String title, String value, Color color) {
+  Widget statistic(String title, String value, Color color) {
     return Column(
       children: [
-        Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
-        const SizedBox(height: 2),
-        Text(title, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text(
+          value,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: color,
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.grey,
+            fontSize: 10,
+          ),
+        ),
       ],
     );
   }
